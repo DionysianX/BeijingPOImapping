@@ -1,91 +1,59 @@
+import streamlit as st
 import pandas as pd
 import folium
+from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
-import os
 
-def run_map():
-    file_name = '北京机构坐标清单_已完成.csv'
-    if not os.path.exists(file_name):
-        print(f"❌ 找不到文件: {file_name}")
-        return
+# 1. 网页标题
+st.set_page_config(page_title="北京战区分布图", layout="wide")
+st.title("🗺️ 北京教育机构分布在线管理系统")
 
-    # 1. 读取数据
+# 2. 读取数据 (增加错误提示)
+file_name = '北京机构坐标清单_已完成.csv'
+try:
+    # 尝试读取数据
+    df = pd.read_csv(file_name, encoding='utf-8-sig')
+    st.sidebar.success(f"✅ 成功读取数据：{len(df)} 条")
+except Exception as e:
+    st.error(f"❌ 读取文件失败，请检查文件名是否正确: {e}")
+    st.stop() # 停止运行，防止后续报错
+
+# 3. 筛选功能
+st.sidebar.header("区域筛选")
+district = st.sidebar.selectbox("选择行政区", ["全部", "朝阳", "昌平", "海淀", "西城", "东城"])
+if district != "全部":
+    df = df[df['地址'].str.contains(district, na=False)]
+
+# 4. 创建地图对象
+amap_tiles = 'http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}'
+m = folium.Map(location=[39.95, 116.40], zoom_start=10, tiles=amap_tiles, attr='&copy; Amap')
+marker_cluster = MarkerCluster(disableClusteringAtZoom=14).add_to(m)
+
+# 5. 循环打点
+for i, row in df.iterrows():
     try:
-        # 使用 utf-8-sig 兼容你导出的 CSV
-        df = pd.read_csv(file_name, encoding='utf-8-sig')
+        loc_str = str(row['经纬度']).strip()
+        if ',' in loc_str:
+            lng_s, lat_s = loc_str.split(',')
+            lat, lng = float(lat_s), float(lng_s)
+            
+            # 定制弹窗
+            name = str(row['名称'])
+            addr = str(row['地址'])
+            popup_html = f"<b>{name}</b><br><small>{addr}</small>"
+            
+            folium.Marker(
+                location=[lat, lng],
+                popup=folium.Popup(popup_html, max_width=200),
+                tooltip=name
+            ).add_to(marker_cluster)
     except:
-        df = pd.read_csv(file_name, encoding='gbk')
+        continue
 
-    # 2. 初始化地图 (底图仍使用高德，这是最稳的)
-    amap_tiles = 'http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}'
-    m = folium.Map(
-        location=[39.95, 116.40], # 稍微偏北一点，照顾昌平
-        zoom_start=10, 
-        tiles=amap_tiles, 
-        attr='&copy; Amap'
-    )
+# 6. 【核心修改】展示地图
+# 加上 key 属性和明确的宽高，防止页面空白
+st_folium(m, width=1000, height=600, key="bj_map")
 
-    # 3. 颜色分类逻辑 (基于地址关键词)
-    def get_color(address):
-        addr = str(address)
-        if '朝阳' in addr: return 'orange'  # 朝阳用橙色
-        if '昌平' in addr: return 'purple'  # 昌平用紫色
-        if '海淀' in addr: return 'green'   # 海淀用绿色
-        if '西城' in addr: return 'red'     # 西城用红色
-        if '丰台' in addr: return 'cadetblue'
-        return 'blue' # 其他默认蓝
-
-    # 4. 行政区划边界 (从阿里云实时获取，确保边界清晰)
-    bj_admin_url = "https://geo.datav.aliyun.com/areas_v3/bound/110000_full.json"
-    folium.GeoJson(
-        bj_admin_url, 
-        name='北京市行政区划', 
-        style_function=lambda x: {'fillColor': '#3186cc', 'color': 'black', 'weight': 1, 'fillOpacity': 0.05}
-    ).add_to(m)
-
-    # 5. 点聚合逻辑 (核心：远看数字，近看Pin点)
-    # 只要稍微放大，点就会散开
-    marker_cluster = MarkerCluster(disableClusteringAtZoom=14).add_to(m)
-
-    # 6. 循环处理真实数据
-    count = 0
-    for i, row in df.iterrows():
-        try:
-            # 处理经纬度列
-            loc_str = str(row['经纬度']).strip()
-            if ',' in loc_str:
-                lng_s, lat_s = loc_str.split(',')
-                lat, lng = float(lat_s), float(lng_s)
-                
-                name = str(row['名称']) if pd.notnull(row['名称']) else "未知机构"
-                addr = str(row['地址']) if pd.notnull(row['地址']) else "暂无地址"
-                
-                # 获取该区的专属颜色
-                dot_color = get_color(addr)
-
-                # 构建 HTML 弹窗
-                popup_content = f"""
-                <div style='width:180px; font-family:Microsoft YaHei;'>
-                    <b style='color:#1a73e8;'>{name}</b><br>
-                    <div style='margin-top:5px; font-size:12px; color:#666;'>{addr}</div>
-                </div>
-                """
-                
-                folium.Marker(
-                    location=[lat, lng],
-                    popup=folium.Popup(popup_content, max_width=250),
-                    icon=folium.Icon(color=dot_color, icon='info-sign')
-                ).add_to(marker_cluster)
-                count += 1
-        except Exception as e:
-            # 报错也不中断，继续下一条
-            continue
-
-    # 7. 保存文件 (命名为 index.html 方便你上传)
-    m.save('index.html')
-    print(f"✅ 生成成功！共标注了 {count} 个机构。")
-    print("🌐 操作提示：请在联网环境下打开 'index.html'。")
-
-if __name__ == "__main__":
-    run_map()
-    input("\n--- 运行结束，按回车退出 ---")
+# 7. 下方显示数据表
+st.write("### 机构详细名单")
+st.dataframe(df[['名称', '地址']], use_container_width=True)
