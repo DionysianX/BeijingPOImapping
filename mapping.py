@@ -40,9 +40,24 @@ if district != "全部":
 # 4. 创建地图对象
 amap_tiles = 'http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}'
 m = folium.Map(location=[39.95, 116.40], zoom_start=10, tiles=amap_tiles, attr='&copy; Amap')
-marker_cluster = MarkerCluster(disableClusteringAtZoom=14).add_to(m)
 
-# 5. 循环打点
+# 【新增】加载北京市行政区划边界
+# 这里使用高德公开的地理边界接口数据（GeoJSON）
+bj_admin_url = 'https://geo.datav.aliyun.com/areas_v3/bound/110000_full.json'
+
+folium.GeoJson(
+    bj_admin_url,
+    name='北京市边界',
+    style_function=lambda x: {
+        'fillColor': 'transparent', # 中间透明，不遮挡地图
+        'color': '#1a73e8',        # 边界线颜色：科技蓝
+        'weight': 2.5,             # 线条粗细
+        'dashArray': '5, 5'        # 虚线效果，更有作战沙盘感
+    }
+).add_to(m)
+
+# 5. 循环打点（保持之前的逻辑不变）
+marker_cluster = MarkerCluster(disableClusteringAtZoom=14).add_to(m)
 for i, row in df.iterrows():
     try:
         loc_str = str(row['经纬度']).strip()
@@ -70,4 +85,5 @@ st_folium(m, width=1000, height=600, key="bj_map")
 # 7. 下方显示数据表
 st.write("### 机构详细名单")
 st.dataframe(df[['名称', '地址']], use_container_width=True)
+
 
