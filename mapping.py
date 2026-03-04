@@ -8,15 +8,28 @@ from folium.plugins import MarkerCluster
 st.set_page_config(page_title="北京战区分布图", layout="wide")
 st.title("🗺️ 北京教育机构分布在线管理系统")
 
-# 2. 读取数据 (增加错误提示)
+# 2. 读取数据 (解决编码报错的万能写法)
 file_name = '北京机构坐标清单_已完成.csv'
-try:
-    # 尝试读取数据
-    df = pd.read_csv(file_name, encoding='utf-8-sig')
+
+@st.cache_data
+def load_data():
+    # 依次尝试：带签名的UTF-8、GBK、以及UTF-16（Excel常用）
+    encodings = ['utf-8-sig', 'gbk', 'utf-16']
+    for enc in encodings:
+        try:
+            df = pd.read_csv(file_name, encoding=enc)
+            return df
+        except:
+            continue
+    return None
+
+df = load_data()
+
+if df is not None:
     st.sidebar.success(f"✅ 成功读取数据：{len(df)} 条")
-except Exception as e:
-    st.error(f"❌ 读取文件失败，请检查文件名是否正确: {e}")
-    st.stop() # 停止运行，防止后续报错
+else:
+    st.error("❌ 依然读取失败。请检查 GitHub 里的文件名是否叫：北京机构坐标清单_已完成.csv")
+    st.stop()
 
 # 3. 筛选功能
 st.sidebar.header("区域筛选")
@@ -57,3 +70,4 @@ st_folium(m, width=1000, height=600, key="bj_map")
 # 7. 下方显示数据表
 st.write("### 机构详细名单")
 st.dataframe(df[['名称', '地址']], use_container_width=True)
+
